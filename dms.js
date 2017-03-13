@@ -119,29 +119,25 @@ Dms.toDMS = function(deg, format, dp) {
     switch (format) {
         default: // invalid format spec!
         case 'd': case 'deg':
-            d = deg.toFixed(dp);    // round degrees
-            if (d<100) d = '0' + d; // pad with leading zeros
+            d = deg.toFixed(dp);                // round/right-pad degrees
+            if (d<100) d = '0' + d;             // left-pad with leading zeros (note may include decimals)
             if (d<10) d = '0' + d;
             dms = d + '°';
             break;
         case 'dm': case 'deg+min':
-            var min = (deg*60).toFixed(dp); // convert degrees to minutes & round
-            d = Math.floor(min / 60);       // get component deg/min
-            m = (min % 60).toFixed(dp);     // pad with trailing zeros
-            if (d<100) d = '0' + d;         // pad with leading zeros
-            if (d<10) d = '0' + d;
-            if (m<10) m = '0' + m;
+            d = Math.floor(deg);                // get component deg
+            m = ((deg*60) % 60).toFixed(dp);    // get component min & round/right-pad
+            d = ('000'+d).slice(-3);            // left-pad with leading zeros
+            if (m<10) m = '0' + m;              // left-pad with leading zeros (note may include decimals)
             dms = d + '°'+Dms.separator + m + '′';
             break;
         case 'dms': case 'deg+min+sec':
-            var sec = (deg*3600).toFixed(dp); // convert degrees to seconds & round
-            d = Math.floor(sec / 3600);       // get component deg/min/sec
-            m = Math.floor(sec/60) % 60;
-            s = (sec % 60).toFixed(dp);       // pad with trailing zeros
-            if (d<100) d = '0' + d;           // pad with leading zeros
-            if (d<10) d = '0' + d;
-            if (m<10) m = '0' + m;
-            if (s<10) s = '0' + s;
+            d = Math.floor(deg);                // get component deg
+            m = Math.floor((deg*3600)/60) % 60; // get component min
+            s = (deg*3600 % 60).toFixed(dp);    // get component sec & round/right-pad
+            d = ('000'+d).slice(-3);            // left-pad with leading zeros
+            m = ('00'+m).slice(-2);             // left-pad with leading zeros
+            if (s<10) s = '0' + s;              // left-pad with leading zeros (note may include decimals)
             dms = d + '°'+Dms.separator + m + '′'+Dms.separator + s + '″';
             break;
     }
@@ -206,59 +202,18 @@ Dms.toBrng = function(deg, format, dp) {
  */
 Dms.compassPoint = function(bearing, precision) {
     if (precision === undefined) precision = 3;
-    // note precision = max length of compass point; it could be extended to 4 for quarter-winds
-    // (eg NEbN), but I think they are little used
+    // note precision could be extended to 4 for quarter-winds (eg NEbN), but I think they are little used
 
     bearing = ((bearing%360)+360)%360; // normalise to 0..360
 
-    var point;
-
-    switch (precision) {
-        case 1: // 4 compass points
-            switch (Math.round(bearing*4/360)%4) {
-                case 0: point = 'N'; break;
-                case 1: point = 'E'; break;
-                case 2: point = 'S'; break;
-                case 3: point = 'W'; break;
-            }
-            break;
-        case 2: // 8 compass points
-            switch (Math.round(bearing*8/360)%8) {
-                case 0: point = 'N';  break;
-                case 1: point = 'NE'; break;
-                case 2: point = 'E';  break;
-                case 3: point = 'SE'; break;
-                case 4: point = 'S';  break;
-                case 5: point = 'SW'; break;
-                case 6: point = 'W';  break;
-                case 7: point = 'NW'; break;
-            }
-            break;
-        case 3: // 16 compass points
-            switch (Math.round(bearing*16/360)%16) {
-                case  0: point = 'N';   break;
-                case  1: point = 'NNE'; break;
-                case  2: point = 'NE';  break;
-                case  3: point = 'ENE'; break;
-                case  4: point = 'E';   break;
-                case  5: point = 'ESE'; break;
-                case  6: point = 'SE';  break;
-                case  7: point = 'SSE'; break;
-                case  8: point = 'S';   break;
-                case  9: point = 'SSW'; break;
-                case 10: point = 'SW';  break;
-                case 11: point = 'WSW'; break;
-                case 12: point = 'W';   break;
-                case 13: point = 'WNW'; break;
-                case 14: point = 'NW';  break;
-                case 15: point = 'NNW'; break;
-            }
-            break;
-        default:
-            throw new RangeError('Precision must be between 1 and 3');
-    }
-
-    return point;
+    var cardinals = {
+        1: [ 'N', 'E', 'S', 'W' ],
+        2: [ 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW' ],
+        3: [ 'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW' ],
+    };
+    var points = cardinals[precision].length; // no of compass points at req’d precision
+    var cardinal = cardinals[precision][Math.round(bearing/360*points)%points];
+    return cardinal;
 };
 
 

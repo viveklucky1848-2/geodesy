@@ -41,7 +41,7 @@ LatLon.prototype.distanceTo = function(point) {
     if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
 
     try {
-        return this.inverse(point).distance;
+        return Number(this.inverse(point).distance.toFixed(3)); // round to 1mm precision
     } catch (e) {
         return NaN; // failed to converge
     }
@@ -66,7 +66,7 @@ LatLon.prototype.initialBearingTo = function(point) {
     if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
 
     try {
-        return this.inverse(point).initialBearing;
+        return Number(this.inverse(point).initialBearing.toFixed(9)); // round to 0.00001″ precision
     } catch (e) {
         return NaN; // failed to converge
     }
@@ -91,7 +91,7 @@ LatLon.prototype.finalBearingTo = function(point) {
     if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
 
     try {
-        return this.inverse(point).finalBearing;
+        return Number(this.inverse(point).finalBearing.toFixed(9)); // round to 0.00001″ precision
     } catch (e) {
         return NaN; // failed to converge
     }
@@ -134,7 +134,7 @@ LatLon.prototype.destinationPoint = function(distance, initialBearing) {
  *   var b2 = p1.finalBearingOn(306.86816, 54972.271); // 307.1736°
  */
 LatLon.prototype.finalBearingOn = function(distance, initialBearing) {
-    return this.direct(Number(distance), Number(initialBearing)).finalBearing;
+    return Number(this.direct(Number(distance), Number(initialBearing)).finalBearing.toFixed(9)); // round to 0.00001″ precision
 };
 
 
@@ -176,8 +176,8 @@ LatLon.prototype.direct = function(distance, initialBearing) {
             B/6*cos2σM*(-3+4*sinσ*sinσ)*(-3+4*cos2σM*cos2σM)));
         σʹ = σ;
         σ = s / (b*A) + Δσ;
-    } while (Math.abs(σ-σʹ) > 1e-12 && ++iterations<200);
-    if (iterations>=200) throw new Error('Formula failed to converge'); // not possible?
+    } while (Math.abs(σ-σʹ) > 1e-12 && ++iterations<100);
+    if (iterations >= 100) throw new Error('Formula failed to converge'); // not possible!
 
     var x = sinU1*sinσ - cosU1*cosσ*cosα1;
     var φ2 = Math.atan2(sinU1*cosσ + cosU1*sinσ*cosα1, (1-f)*Math.sqrt(sinα*sinα + x*x));
@@ -193,6 +193,7 @@ LatLon.prototype.direct = function(distance, initialBearing) {
     return {
         point:        new LatLon(φ2.toDegrees(), λ2.toDegrees(), this.datum),
         finalBearing: α2.toDegrees(),
+        iterations:   iterations,
     };
 };
 
@@ -203,10 +204,11 @@ LatLon.prototype.direct = function(distance, initialBearing) {
  * @private
  * @param   {LatLon} point - Latitude/longitude of destination point.
  * @returns {Object} Object including distance, initialBearing, finalBearing.
- * @throws  {Error}  If formula failed to converge.
+ * @throws  {Error}  If λ > π or formula failed to converge.
  */
 LatLon.prototype.inverse = function(point) {
     var p1 = this, p2 = point;
+    if (p1.lon == -180) p1.lon = 180;
     var φ1 = p1.lat.toRadians(), λ1 = p1.lon.toRadians();
     var φ2 = p2.lat.toRadians(), λ2 = p2.lon.toRadians();
 
@@ -223,19 +225,19 @@ LatLon.prototype.inverse = function(point) {
         sinλ = Math.sin(λ);
         cosλ = Math.cos(λ);
         sinSqσ = (cosU2*sinλ) * (cosU2*sinλ) + (cosU1*sinU2-sinU1*cosU2*cosλ) * (cosU1*sinU2-sinU1*cosU2*cosλ);
+        if (sinSqσ == 0) return 0;  // co-incident points
         sinσ = Math.sqrt(sinSqσ);
-        if (sinσ == 0) return 0;  // co-incident points
         cosσ = sinU1*sinU2 + cosU1*cosU2*cosλ;
         σ = Math.atan2(sinσ, cosσ);
         sinα = cosU1 * cosU2 * sinλ / sinσ;
         cosSqα = 1 - sinα*sinα;
-        cos2σM = cosσ - 2*sinU1*sinU2/cosSqα;
-        if (isNaN(cos2σM)) cos2σM = 0;  // equatorial line: cosSqα=0 (§6)
+        cos2σM = (cosSqα != 0) ? (cosσ - 2*sinU1*sinU2/cosSqα) : 0; // equatorial line: cosSqα=0 (§6)
         C = f/16*cosSqα*(4+f*(4-3*cosSqα));
         λʹ = λ;
         λ = L + (1-C) * f * sinα * (σ + C*sinσ*(cos2σM+C*cosσ*(-1+2*cos2σM*cos2σM)));
-    } while (Math.abs(λ-λʹ) > 1e-12 && ++iterations<200);
-    if (iterations>=200) throw new Error('Formula failed to converge');
+        if (Math.abs(λ) > Math.PI) throw new Error('λ > π');
+    } while (Math.abs(λ-λʹ) > 1e-12 && ++iterations<1000);
+    if (iterations >= 1000) throw new Error('Formula failed to converge');
 
     var uSq = cosSqα * (a*a - b*b) / (b*b);
     var A = 1 + uSq/16384*(4096+uSq*(-768+uSq*(320-175*uSq)));
@@ -251,8 +253,12 @@ LatLon.prototype.inverse = function(point) {
     α1 = (α1 + 2*Math.PI) % (2*Math.PI); // normalise to 0..360
     α2 = (α2 + 2*Math.PI) % (2*Math.PI); // normalise to 0..360
 
-    s = Number(s.toFixed(3)); // round to 1mm precision
-    return { distance: s, initialBearing: α1.toDegrees(), finalBearing: α2.toDegrees() };
+    return {
+        distance:       s,
+        initialBearing: α1.toDegrees(),
+        finalBearing:   α2.toDegrees(),
+        iterations:     iterations,
+    };
 };
 
 

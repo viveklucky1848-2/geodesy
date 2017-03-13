@@ -170,21 +170,17 @@ Vector3d.prototype.unit = function() {
  * Calculates the angle between ‘this’ vector and supplied vector.
  *
  * @param   {Vector3d} v
- * @param   {Vector3d} [vSign] - If supplied (and out of plane of this and v), angle is signed +ve if
- *     this->v is clockwise looking along vSign, -ve in opposite direction (otherwise unsigned angle).
+ * @param   {Vector3d} [n] - Plane normal: if supplied, angle is -π..+π, signed +ve if this->v is
+ *     clockwise looking along n, -ve in opposite direction (if not supplied, angle is always 0..π).
  * @returns {number} Angle (in radians) between this vector and supplied vector.
  */
-Vector3d.prototype.angleTo = function(v, vSign) {
+Vector3d.prototype.angleTo = function(v, n) {
     if (!(v instanceof Vector3d)) throw new TypeError('v is not Vector3d object');
+    if (!(n instanceof Vector3d || n == undefined)) throw new TypeError('n is not Vector3d object');
 
-    var sinθ = this.cross(v).length();
+    var sign = n==undefined ? 1 : Math.sign(this.cross(v).dot(n));
+    var sinθ = this.cross(v).length() * sign;
     var cosθ = this.dot(v);
-
-    if (vSign !== undefined) {
-        if (!(vSign instanceof Vector3d)) throw new TypeError('vSign is not Vector3d object');
-        // use vSign as reference to get sign of sinθ
-        sinθ = this.cross(v).dot(vSign)<0 ? -sinθ : sinθ;
-    }
 
     return Math.atan2(sinθ, cosθ);
 };
@@ -209,12 +205,12 @@ Vector3d.prototype.rotateAround = function(axis, theta) {
     var c = Math.cos(theta);
     // quaternion-derived rotation matrix
     var q = [
-        [ a.x*a.x*(1-c) + c,     a.x*a.y*(1-c) - a.z*s, a.x*a.z*(1-c) + a.y*s],
-        [ a.y*a.x*(1-c) + a.z*s, a.y*a.y*(1-c) + c,     a.y*a.z*(1-c) - a.x*s],
-        [ a.z*a.x*(1-c) - a.y*s, a.z*a.y*(1-c) + a.x*s, a.z*a.z*(1-c) + c    ],
+        [ a.x*a.x*(1-c) + c,     a.x*a.y*(1-c) - a.z*s, a.x*a.z*(1-c) + a.y*s ],
+        [ a.y*a.x*(1-c) + a.z*s, a.y*a.y*(1-c) + c,     a.y*a.z*(1-c) - a.x*s ],
+        [ a.z*a.x*(1-c) - a.y*s, a.z*a.y*(1-c) + a.x*s, a.z*a.z*(1-c) + c     ],
     ];
     // multiply q × p
-    var qp = [0, 0, 0];
+    var qp = [ 0, 0, 0 ];
     for (var i=0; i<3; i++) {
         for (var j=0; j<3; j++) {
             qp[i] += q[i][j] * p[j];
@@ -240,6 +236,17 @@ Vector3d.prototype.toString = function(precision) {
     return str;
 };
 
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
+
+/** Polyfill Math.sign for old browsers / IE */
+if (Math.sign === undefined) {
+    Math.sign = function(x) {
+        x = +x; // convert to a number
+        if (x === 0 || isNaN(x)) return x;
+        return x > 0 ? 1 : -1;
+    };
+}
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 if (typeof module != 'undefined' && module.exports) module.exports = Vector3d; // ≡ export default Vector3d

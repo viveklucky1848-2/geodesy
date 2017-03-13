@@ -151,6 +151,47 @@ LatLon.prototype.midpointTo = function(point) {
 
 
 /**
+ * Returns the point at given fraction between ‘this’ point and specified point.
+ *
+ * @param   {LatLon} point - Latitude/longitude of destination point.
+ * @param   {number} fraction - Fraction between the two points (0 = this point, 1 = specified point).
+ * @returns {LatLon} Intermediate point between this point and destination point.
+ *
+ * @example
+ *   let p1 = new LatLon(52.205, 0.119);
+ *   let p2 = new LatLon(48.857, 2.351);
+ *   let pMid = p1.intermediatePointTo(p2, 0.25); // 51.3721°N, 000.7073°E
+ */
+LatLon.prototype.intermediatePointTo = function(point, fraction) {
+    if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
+
+    var φ1 = this.lat.toRadians(), λ1 = this.lon.toRadians();
+    var φ2 = point.lat.toRadians(), λ2 = point.lon.toRadians();
+    var sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1), sinλ1 = Math.sin(λ1), cosλ1 = Math.cos(λ1);
+    var sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2), sinλ2 = Math.sin(λ2), cosλ2 = Math.cos(λ2);
+
+    // distance between points
+    var Δφ = φ2 - φ1;
+    var Δλ = λ2 - λ1;
+    var a = Math.sin(Δφ/2) * Math.sin(Δφ/2)
+        + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    var δ = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    var A = Math.sin((1-fraction)*δ) / Math.sin(δ);
+    var B = Math.sin(fraction*δ) / Math.sin(δ);
+
+    var x = A * cosφ1 * cosλ1 + B * cosφ2 * cosλ2;
+    var y = A * cosφ1 * sinλ1 + B * cosφ2 * sinλ2;
+    var z = A * sinφ1 + B * sinφ2;
+
+    var φ3 = Math.atan2(z, Math.sqrt(x*x + y*y));
+    var λ3 = Math.atan2(y, x);
+
+    return new LatLon(φ3.toDegrees(), (λ3.toDegrees()+540)%360-180); // normalise lon to −180..+180°
+};
+
+
+/**
  * Returns the destination point from ‘this’ point having travelled the given distance on the
  * given initial bearing (bearing normally varies around path followed).
  *
@@ -166,8 +207,8 @@ LatLon.prototype.midpointTo = function(point) {
 LatLon.prototype.destinationPoint = function(distance, bearing, radius) {
     radius = (radius === undefined) ? 6371e3 : Number(radius);
 
-    // φ2 = asin( sinφ1⋅cosδ + cosφ1⋅sinδ⋅cosθ )
-    // λ2 = λ1 + atan2( sinθ⋅sinδ⋅cosφ1, cosδ − sinφ1⋅sinφ2 )
+    // sinφ2 = sinφ1⋅cosδ + cosφ1⋅sinδ⋅cosθ
+    // tanΔλ = sinθ⋅sinδ⋅cosφ1 / cosδ−sinφ1⋅sinφ2
     // see http://williams.best.vwh.net/avform.htm#LL
 
     var δ = Number(distance) / radius; // angular distance in radians
@@ -176,9 +217,14 @@ LatLon.prototype.destinationPoint = function(distance, bearing, radius) {
     var φ1 = this.lat.toRadians();
     var λ1 = this.lon.toRadians();
 
-    var φ2 = Math.asin(Math.sin(φ1)*Math.cos(δ) + Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
-    var x = Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2);
-    var y = Math.sin(θ) * Math.sin(δ) * Math.cos(φ1);
+    var sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1);
+    var sinδ = Math.sin(δ), cosδ = Math.cos(δ);
+    var sinθ = Math.sin(θ), cosθ = Math.cos(θ);
+
+    var sinφ2 = sinφ1*cosδ + cosφ1*sinδ*cosθ;
+    var φ2 = Math.asin(sinφ2);
+    var y = sinθ * sinδ * cosφ1;
+    var x = cosδ - sinφ1 * sinφ2;
     var λ2 = λ1 + Math.atan2(y, x);
 
     return new LatLon(φ2.toDegrees(), (λ2.toDegrees()+540)%360-180); // normalise to −180..+180°
@@ -259,15 +305,15 @@ LatLon.intersection = function(p1, brng1, p2, brng2) {
 LatLon.prototype.crossTrackDistanceTo = function(pathStart, pathEnd, radius) {
     if (!(pathStart instanceof LatLon)) throw new TypeError('pathStart is not LatLon object');
     if (!(pathEnd instanceof LatLon)) throw new TypeError('pathEnd is not LatLon object');
-    radius = (radius === undefined) ? 6371e3 : Number(radius);
+    var R = (radius === undefined) ? 6371e3 : Number(radius);
 
-    var δ13 = pathStart.distanceTo(this, radius)/radius;
+    var δ13 = pathStart.distanceTo(this, R) / R;
     var θ13 = pathStart.bearingTo(this).toRadians();
     var θ12 = pathStart.bearingTo(pathEnd).toRadians();
 
-    var dxt = Math.asin( Math.sin(δ13) * Math.sin(θ13-θ12) ) * radius;
+    var δ = Math.asin( Math.sin(δ13) * Math.sin(θ13-θ12) );
 
-    return dxt;
+    return δ * R;
 };
 
 
@@ -463,6 +509,97 @@ LatLon.prototype.rhumbMidpointTo = function(point) {
     var p = LatLon(φ3.toDegrees(), (λ3.toDegrees()+540)%360-180); // normalise to −180..+180°
 
     return p;
+};
+
+
+/* Area - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+
+/**
+ * Calculates the area of a spherical polygon where the sides of the polygon are great circle
+ * arcs joining the vertices.
+ *
+ * @param   {LatLon[]} polygon - Array of points defining vertices of the polygon
+ * @param   {number} [radius=6371e3] - (Mean) radius of earth (defaults to radius in metres).
+ * @returns {number} The area of the polygon, in the same units as radius.
+ *
+ * @example
+ *   var polygon = [new LatLon(0,0), new LatLon(1,0), new LatLon(0,1)];
+ *   var area = LatLon.areaOf(polygon); // 6.18e9 m²
+ */
+LatLon.areaOf = function(polygon, radius) {
+    // uses method due to Karney: osgeo-org.1560.x6.nabble.com/Area-of-a-spherical-polygon-td3841625.html;
+    // for each edge of the polygon, tan(E/2) = tan(Δλ/2)·(tan(φ1/2) + tan(φ2/2)) / (1 + tan(φ1/2)·tan(φ2/2))
+    // where E is the spherical excess of the trapezium obtained by extending the edge to the equator
+
+    var R = (radius === undefined) ? 6371e3 : Number(radius);
+
+    // close polygon so that last point equals first point
+    var closed = polygon[0].equals(polygon[polygon.length-1]);
+    if (!closed) polygon.push(polygon[0]);
+
+    var nVertices = polygon.length - 1;
+
+    var S = 0; // spherical excess in steradians
+    for (var v=0; v<nVertices; v++) {
+        var φ1 = polygon[v].lat.toRadians();
+        var φ2 = polygon[v+1].lat.toRadians();
+        var Δλ = (polygon[v+1].lon - polygon[v].lon).toRadians();
+        var E = 2 * Math.atan2(Math.tan(Δλ/2) * (Math.tan(φ1/2)+Math.tan(φ2/2)), 1 + Math.tan(φ1/2)*Math.tan(φ2/2));
+        S += E;
+    }
+
+    if (isPoleEnclosedBy(polygon)) S = Math.abs(S) - 2*Math.PI;
+
+    var A = Math.abs(S * R*R); // area in units of R
+
+    if (!closed) polygon.pop(); // restore polygon to pristine condition
+
+    return A;
+
+    // returns whether polygon encloses pole: sum of course deltas around pole is 0° rather than
+    // normal ±360°: blog.element84.com/determining-if-a-spherical-polygon-contains-a-pole.html
+    function isPoleEnclosedBy(polygon) {
+        // TODO: any better test than this?
+        var ΣΔ = 0;
+        var prevBrng = polygon[0].bearingTo(polygon[1]);
+        for (var v=0; v<polygon.length-1; v++) {
+            var initBrng = polygon[v].bearingTo(polygon[v+1]);
+            var finalBrng = polygon[v].finalBearingTo(polygon[v+1]);
+            ΣΔ += (initBrng - prevBrng + 540) % 360 - 180;
+            ΣΔ += (finalBrng - initBrng + 540) % 360 - 180;
+            prevBrng = finalBrng;
+        }
+        var initBrng = polygon[0].bearingTo(polygon[1]);
+        ΣΔ += (initBrng - prevBrng + 540) % 360 - 180;
+        // TODO: fix (intermittant) edge crossing pole - eg (85,90), (85,0), (85,-90)
+        var enclosed = Math.abs(ΣΔ) < 90; // 0°-ish
+        return enclosed;
+    }
+};
+
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
+
+
+/**
+ * Checks if another point is equal to ‘this’ point.
+ *
+ * @param   {LatLon} point - Point to be compared against this point.
+ * @returns {bool}   True if points are identical.
+ *
+ * @example
+ *   var p1 = new LatLon(52.205, 0.119);
+ *   var p2 = new LatLon(52.205, 0.119);
+ *   var equal = p1.equals(p2); // true
+ */
+LatLon.prototype.equals = function(point) {
+    if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
+
+    if (this.lat != point.lat) return false;
+    if (this.lon != point.lon) return false;
+
+    return true;
 };
 
 

@@ -109,6 +109,33 @@ LatLon.prototype.greatCircle = function(bearing) {
 
 
 /**
+ * N-vector normal to great circle obtained by heading on given bearing from point given by ‘this’
+ * n-vector.
+ *
+ * Direction of vector is such that initial bearing vector b = c × p.
+ *
+ * @param   {number}   bearing - Compass bearing in degrees.
+ * @returns {Vector3d} Normalised vector representing great circle.
+ *
+ * @example
+ *   var n1 = new LatLon(53.3206, -1.7297).toNvector();
+ *   var gc = n1.greatCircle(96.0); // [-0.794,0.129,0.594]
+ */
+Vector3d.prototype.greatCircle = function(bearing) {
+    var θ = Number(bearing).toRadians();
+
+    var N = new Vector3d(0, 0, 1);
+    var e = N.cross(this); // easting
+    var n = this.cross(e); // northing
+    var eʹ = e.times(Math.cos(θ)/e.length());
+    var nʹ = n.times(Math.sin(θ)/n.length());
+    var c = nʹ.minus(eʹ);
+
+    return c;
+};
+
+
+/**
  * Returns the distance from ‘this’ point to the specified point.
  *
  * @param   {LatLon} point - Latitude/longitude of destination point.
@@ -137,8 +164,9 @@ LatLon.prototype.distanceTo = function(point, radius) {
 /**
  * Returns the (initial) bearing from ‘this’ point to the specified point, in compass degrees.
  *
- * @param   {LatLon} point - Latitude/longitude of destination point.
- * @returns {number} Initial bearing in degrees from North (0°..360°).
+ * @param   {LatLon}    point - Latitude/longitude of destination point.
+ * @returns {number}    Initial bearing in degrees from North (0°..360°).
+ * @throws  {TypeError} Point is not LatLon object.
  *
  * @example
  *   var p1 = new LatLon(52.205, 0.119);
@@ -151,15 +179,14 @@ LatLon.prototype.bearingTo = function(point) {
     var p1 = this.toVector();
     var p2 = point.toVector();
 
-    var northPole = new Vector3d(0, 0, 1);
+    var N = new Vector3d(0, 0, 1); // n-vector representing north pole
 
-    var c1 = p1.cross(p2);        // great circle through p1 & p2
-    var c2 = p1.cross(northPole); // great circle through p1 & north pole
+    var c1 = p1.cross(p2); // great circle through p1 & p2
+    var c2 = p1.cross(N);  // great circle through p1 & north pole
 
-    // bearing is (signed) angle between c1 & c2
-    var bearing = c1.angleTo(c2, p1).toDegrees();
+    var θ = c1.angleTo(c2, p1); // bearing is (signed) angle between c1 & c2
 
-    return (bearing+360) % 360; // normalise to 0..360
+    return (θ.toDegrees()+360) % 360; // normalise to 0..360
 };
 
 
@@ -183,6 +210,70 @@ LatLon.prototype.midpointTo = function(point) {
     var mid = p1.plus(p2).unit();
 
     return mid.toLatLonS();
+};
+
+
+/**
+ * Returns the point at given fraction between ‘this’ point and specified point.
+ *
+ * @param   {LatLon}    point - Latitude/longitude of destination point.
+ * @param   {number}    fraction - Fraction between the two points (0 = this point, 1 = specified point).
+ * @returns {LatLon}    Intermediate point between this point and destination point.
+ * @throws  {TypeError} Point is not LatLon object.
+ *
+ * @example
+ *   var p1 = new LatLon(52.205, 0.119);
+ *   var p2 = new LatLon(48.857, 2.351);
+ *   var pInt = p1.intermediatePointTo(p2, 0.25); // 51.3721°N, 000.7073°E
+ */
+LatLon.prototype.intermediatePointTo = function(point, fraction) {
+    if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
+
+    // angular distance between points; tanδ = |n₁×n₂| / n₁⋅n₂
+    var n1 = this.toVector();
+    var n2 = point.toVector();
+    var sinθ = n1.cross(n2).length();
+    var cosθ = n1.dot(n2);
+    var δ = Math.atan2(sinθ, cosθ);
+
+    // interpolated angular distance on straight line between points
+    var δi = δ * Number(fraction);
+    var sinδi = Math.sin(δi);
+    var cosδi = Math.cos(δi);
+
+    // direction vector (perpendicular to n1 in plane of n2)
+    var d = n1.cross(n2).unit().cross(n1); // unit(n₁×n₂) × n₁
+
+    // interpolated position
+    var int = n1.times(cosδi).plus(d.times(sinδi)); // n₁⋅cosδᵢ + d⋅sinδᵢ
+
+    return new Vector3d(int.x, int.y, int.z).toLatLonS();
+};
+
+
+/**
+ * Returns the latitude/longitude point projected from the point at given fraction on a straight
+ * line between between ‘this’ point and specified point.
+ *
+ * @param   {LatLon}    point - Latitude/longitude of destination point.
+ * @param   {number}    fraction - Fraction between the two points (0 = this point, 1 = specified point).
+ * @returns {LatLon}    Intermediate point between this point and destination point.
+ * @throws  {TypeError} Point is not LatLon object.
+ *
+ * @example
+ *   var p1 = new LatLon(52.205, 0.119);
+ *   var p2 = new LatLon(48.857, 2.351);
+ *   var pInt = p1.intermediatePointOnChordTo(p2, 0.25); // 51.3723°N, 000.7072°E
+ */
+LatLon.prototype.intermediatePointOnChordTo = function(point, fraction) {
+    if (!(point instanceof LatLon)) throw new TypeError('point is not LatLon object');
+
+    var n1 = this.toVector();
+    var n2 = point.toVector();
+
+    var int = n1.plus(n2.minus(n1).times(Number(fraction))); // n₁ + (n₂−n₁)·f ≡ n₁·(1-f) + n₂·f
+
+    return new Vector3d(int.x, int.y, int.z).toLatLonS();
 };
 
 
@@ -335,23 +426,17 @@ LatLon.intersection = function(path1start, path1brngEnd, path2start, path2brngEn
  */
 LatLon.prototype.crossTrackDistanceTo = function(pathStart, pathBrngEnd, radius) {
     if (!(pathStart instanceof LatLon)) throw new TypeError('pathStart is not LatLon object');
-    radius = (radius === undefined) ? 6371e3 : Number(radius);
+    var R = (radius === undefined) ? 6371e3 : Number(radius);
 
     var p = this.toVector();
 
-    var gc;
-    if (pathBrngEnd instanceof LatLon) {
-        // great circle defined by two points
-        gc = pathStart.toVector().cross(pathBrngEnd.toVector());
-    } else {
-        // great circle defined by point + bearing
-        gc = pathStart.greatCircle(Number(pathBrngEnd));
-    }
+    var gc = pathBrngEnd instanceof LatLon                   // (note JavaScript is not good at method overloading)
+        ? pathStart.toVector().cross(pathBrngEnd.toVector()) // great circle defined by two points
+        : pathStart.greatCircle(Number(pathBrngEnd));        // great circle defined by point + bearing
 
-    var α = gc.angleTo(p, p.cross(gc)); // (signed) angle between point & great-circle normal vector
-    α = α<0 ? -Math.PI/2 - α : Math.PI/2 - α; // (signed) angle between point & great-circle
+    var α = gc.angleTo(p) - Math.PI/2; // angle between point & great-circle
 
-    var d = α * radius;
+    var d = α * R;
 
     return d;
 };
@@ -402,10 +487,10 @@ LatLon.prototype.nearestPointOnSegment = function(point1, point2) {
  * Returns whether this point is between point 1 & point 2.
  *
  * If this point is not on the great circle defined by point1 & point 2, returns whether this point
- * is within area bound by perpendiculars to the great circle at each point.
+ * is within area bound by perpendiculars to the great circle at each point (in the same hemisphere).
  *
- * @param   {LatLon} point1 - First point defining segment.
- * @param   {LatLon} point2 - Second point defining segment.
+ * @param   {LatLon}  point1 - First point defining segment.
+ * @param   {LatLon}  point2 - Second point defining segment.
  * @returns {boolean} Whether this point is within extent of segment.
  */
 LatLon.prototype.isBetween = function(point1, point2) {
@@ -420,39 +505,103 @@ LatLon.prototype.isBetween = function(point1, point2) {
     var extent2 = δ20.dot(δ21);
 
     var isBetween = extent1>=0 && extent2>=0;
+    var isSameHemisphere = n0.dot(n1)>=0 && n0.dot(n2)>=0;
 
-    return isBetween;
+    return isBetween && isSameHemisphere;
 };
 
 
 /**
  * Tests whether ‘this’ point is enclosed by the polygon defined by a set of points.
  *
- * Based on Jordan curve theorem, from W Randolph Franklin: www.ecse.rpi.edu/~wrf/Research/Short_Notes/pnpoly.html.
- * A vector from a point inside the polygon will intersect the polygon a odd number of times, a vector
- * from a point outside the polygon will intersect the polygon an even number of times; care is required
- * in handling degenerate cases at vertices. See also erich.realtimerendering.com/ptinpoly.
- *
- * @param   {LatLon[]} points - Ordered array of points defining vertices of polygon.
+ * @param   {LatLon[]} polygon - Ordered array of points defining vertices of polygon.
  * @returns {bool}     Whether this point is enclosed by polygon.
  *
  * @example
  *   var bounds = [ new LatLon(45,1), new LatLon(45,2), new LatLon(46,2), new LatLon(46,1) ];
- *   var p = new LatLon(45,1, 1.1);
+ *   var p = new LatLon(45.1, 1.1);
  *   var inside = p.enclosedBy(bounds); // true
  */
-LatLon.prototype.enclosedBy = function(points) {
-    var nVertices = points.length;
-    var enclosed = false;
+LatLon.prototype.enclosedBy = function(polygon) {
+    // this method uses angle summation test; on a plane, angles for an enclosed point will sum
+    // to 360°, angles for an exterior point will sum to 0°. On a sphere, enclosed point angles
+    // will sum to less than 360° (due to spherical excess), exterior point angles will be small
+    // but non-zero. TODO: are any winding number optimisations applicable to spherical surface?
 
-    for (var i=0, j=nVertices-1; i<nVertices; j=i++) {
-        var pi = points[i], pj = points[j];
-        if ( ((pi.lat>this.lat) != (pj.lat>this.lat))
-            && (this.lon < (pj.lon-pi.lon) * (this.lat-pi.lat) / (pj.lat-pi.lat) + pi.lon) ) {
-            enclosed = !enclosed;
-        }
+    // close the polygon so that the last point equals the first point
+    var closed = polygon[0].equals(polygon[polygon.length-1]);
+    if (!closed) polygon.push(polygon[0]);
+
+    var nVertices = polygon.length - 1;
+
+    var p = this.toVector();
+
+    // get vectors from p to each vertex
+    var vectorToVertex = [];
+    for (var v=0; v<nVertices; v++) vectorToVertex[v] = p.minus(polygon[v].toVector());
+    vectorToVertex.push(vectorToVertex[0]);
+
+    // sum subtended angles of each edge (using vector p to determine sign)
+    var Σθ = 0;
+    for (var v=0; v<nVertices; v++) {
+        Σθ += vectorToVertex[v].angleTo(vectorToVertex[v+1], p);
     }
+
+    var enclosed = Math.abs(Σθ) > Math.PI;
+
+    if (!closed) polygon.pop(); // restore polygon to pristine condition
+
     return enclosed;
+};
+
+
+/**
+ * Calculates the area of a spherical polygon where the sides of the polygon are great circle
+ * arcs joining the vertices.
+ *
+ * @param   {LatLon[]} polygon - Array of points defining vertices of the polygon.
+ * @param   {number}   [radius=6371e3] - (Mean) radius of earth (defaults to radius in metres).
+ * @returns {number}   The area of the polygon in the same units as radius.
+ *
+ * @example
+ *   var polygon = [ new LatLon(0,0), new LatLon(1,0), new LatLon(0,1) ];
+ *   var area = LatLon.areaOf(polygon); // 6.18e9 m²
+ */
+LatLon.areaOf = function(polygon, radius) {
+    // uses Girard’s theorem: A = [Σθᵢ − (n−2)·π]·R²
+
+    var R = (radius == undefined) ? 6371e3 : Number(radius);
+
+    // close the polygon so that the last point equals the first point
+    var closed = polygon[0].equals(polygon[polygon.length-1]);
+    if (!closed) polygon.push(polygon[0]);
+
+    var n = polygon.length - 1; // number of vertices
+
+    // get great-circle vector for each edge
+    var c = [];
+    for (var v=0; v<n; v++) {
+        var i = polygon[v].toVector();
+        var j = polygon[v+1].toVector();
+        c[v] = i.cross(j); // great circle for segment v..v+1
+    }
+    c.push(c[0]);
+
+    // sum interior angles; depending on whether polygon is cw or ccw, angle between edges is
+    // π−α or π+α, where α is angle between great-circle vectors; so sum α, then take n·π − |Σα|
+    // (cannot use Σ(π−|α|) as concave polygons would fail); use vector to 1st point as plane
+    // normal for sign of α
+    var n1 = polygon[0].toVector();
+    var Σα = 0;
+    for (var v=0; v<n; v++) Σα += c[v].angleTo(c[v+1], n1);
+    var Σθ = n*Math.PI - Math.abs(Σα);
+
+    var E = (Σθ - (n-2)*Math.PI); // spherical excess (in steradians)
+    var A = E * R*R;              // area in units of R²
+
+    if (!closed) polygon.pop(); // restore polygon to pristine condition
+
+    return A;
 };
 
 

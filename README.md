@@ -58,6 +58,8 @@ All calculations are done using simple spherical trigonometric formulae.
         - Final bearing to 2nd point
     * `latlon.midpointTo(point)`
         - Midpoint to 2nd point
+    * `latlon.intermediatePointTo(point, fraction)`
+        - Point at given fraction towards 2nd point
     * `latlon.destinationPoint(distance, bearing[, radius])`
         - Destination point travelling given distance on given bearing
     * `LatLon.intersection(point1, bearing1, point2, bearing2)`
@@ -76,6 +78,10 @@ All calculations are done using simple spherical trigonometric formulae.
         - Destination point travelling distance on bearing
     * `latlon.rhumbMidpointTo(point)`
         - Midpoint on rhumb line to 2nd point
+    * `LatLon.areaOf(polygon[, radius])`
+        - Area of polygon defined by array of vertex points
+    * `latlon.equals(point)`
+        - Equality of points
     * `latlon.toString([format[, decimals]])`
         - String representation of point, in deg/deg-min/deg-min-sec format to given decimal places
 
@@ -158,10 +164,14 @@ to a spherical earth model only.
     * `latlon.bearingTo(point)`
         - (Initial) bearing to point
     * `latlon.midpointTo(point)`
-        - Midpoint to point
+        - Midpoint to 2nd point
+    * `latlon.intermediatePointTo(point, fraction)`
+        - Point at given fraction towards 2nd point
+    * `latlon.intermediatePointOnChordTo(point, fraction)`
+        - Point at given fraction along straight line towards 2nd point
     * `latlon.destinationPoint(distance, bearing[, radius])`
         - Destination point travelling distance on bearing
-    * `latlon.intersection(path1start, path1brngEnd, path2start, path2brngEnd)`
+    * `LatLon.intersection(path1start, path1brngEnd, path2start, path2brngEnd)`
         - Intersection of two paths defined by start+bearing or start+end
     * `latlon.crossTrackDistanceTo(pathStart, pathBrngEnd[, radius])`
         - Distance to great circle defined by start-point and end-point/bearing
@@ -171,7 +181,9 @@ to a spherical earth model only.
         - Whether point is between two other points
     * `latlon.enclosedBy(points)`
         - Whether point is enclosed by polygon
-    * `latlon.meanOf(points)`
+    * `LatLon.areaOf(polygon[, radius])`
+        - Area of polygon defined by array of vertex points
+    * `LatLon.meanOf(points)`
         - Geographic mean of set of points
     * `latlon.equals(point)`
         - Whether points are equal
@@ -223,7 +235,7 @@ Generic 3-d vector functions, not tied to geodesy applications.
 *utm.js*: Universal Transverse Mercator / Latitude-Longitude conversions
 ------------------------------------------------------------------------
 
-Conversions between UTM coordinates and latitude-longitude points using Kearney’s calculations
+Conversions between UTM coordinates and latitude-longitude points using Karney’s calculations
 (accurate to 5nm).
 
 * *Constructor*
@@ -291,7 +303,7 @@ More information at www.movable-type.co.uk/scripts/latlong-gridref.html.
 Conversions between decimal degrees and (sexagesimal) degrees-minutes-seconds (and compass points).
 
 * *Methods*
-    * `Dms.parse(dmsStr)`
+    * `Dms.parseDMS(dmsStr)`
         - Parse string representing degrees/minutes/seconds into numeric degrees
     * `Dms.toDms(degrees[, format[, decimals]])`
         - Convert decimal degrees to deg/min/sec format
